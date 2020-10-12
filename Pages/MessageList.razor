@@ -1,0 +1,187 @@
+@page "/messages"
+
+@using System.Linq
+@using System.Collections.Generic
+@using Microsoft.AspNetCore.SignalR.Client
+@using Microsoft.Extensions.Configuration
+@using System.Threading
+
+@using SVV.MessagingApp.Data
+
+@implements IDisposable
+
+@inject MessageThreadService messageService
+@inject IConfiguration Configuration
+@inject NavigationManager NavigationManager
+
+<h1>Messages</h1>
+
+<p>Here are your SMS messages for <span class="badge badge-secondary">@PrimaryPhoneNumber</span>.</p>
+
+@if (messageThreads == null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <div class="container h-100 mh-100 mw-100">
+        <div class="row">
+            <div id="thread-list overflow-auto mh-100 h-100" class="col-4">
+                <div class="list-group">
+                @foreach (var messageThread in messageThreads)
+                {
+                    <button type="button" class="list-group-item list-group-item-action @((messageThread == selectedMessageThread) ? "active" : "")" @onclick=@(() => SelectMessageThread(messageThread.ID))>
+                        @messageThread.SecondaryPhoneNumber
+                        <span class="badge badge-pill @((messageThread.Read) ? "badge-light" : "badge-primary")">@messageThread.Messages.Count</span></button>
+                }
+                </div>
+                <div>&nbsp;</div>
+                <div>
+                    <button type="button" class="btn btn-secondary">
+                        <span class="glyphicon glyphicon-pencil"></span>New</button>
+                    <span class="badge @((IsConnected) ? "badge-success" : "badge-danger")">SignalR Status: @IsConnected</span>
+                </div>
+            </div>
+            <div id="message-view overflow-auto mh-100" class="col-8">
+                @if (selectedMessageThread == null)
+                {
+                    <p>Select a thread to view messages</p>
+                }
+                else
+                {
+                    <div class="container">
+                    @code {
+                        string alertClass;
+                        string rowClass; 
+                    }
+                    @foreach (var message in selectedMessageThread.Messages)
+                    {
+                        @if (String.Equals(message.From, PrimaryPhoneNumber))
+                        {
+                            alertClass = "alert-secondary";
+                            rowClass = "justify-content-end";
+                        }
+                        else
+                        {
+                            alertClass = "alert-primary";
+                            rowClass = "justify-content-start";
+                        }
+                        <div class="row @rowClass">
+                            <div class="col-8 alert @alertClass">@message.Body</div>
+                        </div>
+                    }
+                    <div class="row">
+                        <div class="input-group mb-3">
+                            <input type="text" @bind=@newMessageBody class="form-control" placeholder="Your Message" aria-label="Your Message" aria-describedby="button-addon2">
+                            <div class="input-group-append">
+                                <button class="btn btn-outline-secondary" type="button" id="button-addon2" @onclick=SendNewMessageAsync>Send</button>
+                            </div>
+                        </div>
+                    </div>
+                    </div>
+                }
+            </div>
+        </div>
+        <div>&nbsp;</div>
+        <div class="row">
+            @if (!String.IsNullOrEmpty(operationStatus))
+            {
+                <div class="alert alert-info w-100 mx-2 my-3">@operationStatus</div>
+            }
+        </div>
+        <div>&nbsp;</div>
+        <div class="row">
+        </div>
+    </div>
+}
+
+@code 
+{
+    // These static properties should be loaded on initilization with the appropiate values from the
+    // application configuration repository (environment, appsettings.json, etc.)
+    private static string PrimaryPhoneNumber;
+    private static string AcsConnectionString;
+    private static string DbConnectionString;
+
+    private string operationStatus;
+
+    private List<MessageThread> messageThreads;
+
+    private MessageThread selectedMessageThread;
+
+    private string newMessageBody;
+
+    private HubConnection hubConnection;
+
+    protected override async Task OnInitializedAsync()
+    {
+        PrimaryPhoneNumber = Configuration["PrimaryPhoneNumber"];
+        if (String.IsNullOrEmpty(PrimaryPhoneNumber))
+        {
+            operationStatus = "Unable to retrieve primary phone number from application configuration.";
+            return;
+        }
+
+        DbConnectionString = Configuration["DbConnectionString"];
+        if (String.IsNullOrEmpty(DbConnectionString))
+        {
+            operationStatus = "Unable to retrieve database connection string from application configuration.";
+            return;
+        }
+
+        AcsConnectionString = Configuration["AcsConnectionString"];
+        if (String.IsNullOrEmpty(AcsConnectionString))
+        {
+            operationStatus = "Unable to retrieve ACS connection string from application configuration.";
+            return;
+        }
+
+        messageThreads = await messageService.GetMessageThreadsAsync(PrimaryPhoneNumber, DbConnectionString);
+
+        hubConnection = new HubConnectionBuilder().WithUrl(NavigationManager.ToAbsoluteUri("/SmsHub")).Build();
+        hubConnection.On<EventGridPayload<SmsEvent>>("SmsEvent_Received", (incomingSms) =>
+        {
+            messageService.OnSmsEventReceived(incomingSms.Data, DbConnectionString);
+
+            operationStatus = String.Format("Incoming SMS from {0}: {1}", incomingSms.Data.From, incomingSms.Data.Message);
+            StateHasChanged();
+        });
+        await hubConnection.StartAsync();
+    }
+
+    public bool IsConnected => hubConnection.State == HubConnectionState.Connected;
+
+    public void Dispose()
+    {
+        _ = hubConnection.DisposeAsync();
+    }
+
+    private void SelectMessageThread(Guid threadID)
+    {
+        selectedMessageThread = messageThreads.Find(thread => thread.ID == threadID);
+        selectedMessageThread.Read = true;
+
+        messageService.SaveMessageThreadAsync(selectedMessageThread, false, DbConnectionString);
+    }
+
+    private async void SendNewMessageAsync()
+    {
+        Message newMessage = new Message()
+        {
+            From = selectedMessageThread.PrimaryPhoneNumber,
+            To = selectedMessageThread.SecondaryPhoneNumber,
+            Date = DateTime.Now,
+            Body = newMessageBody
+        };
+        
+        operationStatus = await messageService.SendNewMessageAsync(selectedMessageThread, newMessage, AcsConnectionString, DbConnectionString);
+
+        newMessageBody = null;
+    }
+
+    private async void ClearStatusMessageAsync()
+    {
+        operationStatus = null;
+        await InvokeAsync(StateHasChanged);
+    }
+}
