@@ -1,6 +1,8 @@
 # acs-messaging-app
 A sample SMS messaging app built in Blazor using the Azure Communication Services to send and received text messages.
 
+![alt text](https://github.com/svanvliet/acs-messaging-app/raw/main/screenshot.png "ACS Messaging App screeshot image")
+
 > This app has can send and received SMS messages in its current state, but is very WIP and needs a lot of work to be useful for developers hoping to experiment with SMS features in Azure Communication services. Documentation in full will be coming shortly.
 
 ## Getting Started
