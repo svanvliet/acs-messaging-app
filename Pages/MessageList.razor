@@ -5,7 +5,6 @@
 @using Microsoft.AspNetCore.SignalR.Client
 @using Microsoft.Extensions.Configuration
 @using System.Threading
-
 @using SVV.MessagingApp.Data
 
 @implements IDisposable
@@ -17,6 +16,37 @@
 <h1>Messages</h1>
 
 <p>Here are your SMS messages for <span class="badge badge-secondary">@PrimaryPhoneNumber</span>.</p>
+
+<div class="modal fade" id="newMessageModal" tabindex="-1" role="dialog" aria-labelledby="modalLabel" aria-hidden="true">
+  <div class="modal-dialog" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modalLabel">Send New Message</h5>
+        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+          <span aria-hidden="true">&times;</span>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="input-group mb-3">
+            <div class="input-group-prepend">
+                <span class="input-group-text" id="basic-addon1">Phone Number</span>
+            </div>
+            <input type="text" id="newMessagePhoneNumber" @bind=newMessageToPhoneNumber class="form-control" placeholder="18005551212" aria-label="phoneNumber" aria-describedby="basic-addon1">
+        </div>
+        <div class="input-group">
+            <div class="input-group-prepend">
+                <span class="input-group-text">Message</span>
+            </div>
+            <textarea id="newMessageBody" @bind=newMessageBody class="form-control" aria-label="Message"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+        <button type="button" class="btn btn-primary" @onclick=SendNewMessageWithThreadAsync data-dismiss="modal">Send</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 @if (messageThreads == null)
 {
@@ -37,8 +67,8 @@ else
                 </div>
                 <div>&nbsp;</div>
                 <div>
-                    <button type="button" class="btn btn-secondary">
-                        <span class="glyphicon glyphicon-pencil"></span>New</button>
+                    <button type="button" class="btn btn-secondary" data-toggle="modal" data-target="#newMessageModal" @onclick=NewMessageModalInit>
+                        New</button>
                     <span class="badge @((IsConnected) ? "badge-success" : "badge-danger")">SignalR Status: @IsConnected</span>
                 </div>
             </div>
@@ -95,6 +125,7 @@ else
     </div>
 }
 
+
 @code 
 {
     // These static properties should be loaded on initilization with the appropiate values from the
@@ -110,6 +141,7 @@ else
     private MessageThread selectedMessageThread;
 
     private string newMessageBody;
+    private string newMessageToPhoneNumber;
 
     private HubConnection hubConnection;
 
@@ -156,20 +188,50 @@ else
         _ = hubConnection.DisposeAsync();
     }
 
+    private void NewMessageModalInit()
+    {
+        newMessageToPhoneNumber = null;
+        newMessageBody = null;
+    }
+
     private void SelectMessageThread(Guid threadID)
     {
         selectedMessageThread = messageThreads.Find(thread => thread.ID == threadID);
         selectedMessageThread.Read = true;
 
-        messageService.SaveMessageThreadAsync(selectedMessageThread, false, DbConnectionString);
+        newMessageToPhoneNumber = selectedMessageThread.SecondaryPhoneNumber;
+
+        messageService.SaveMessageThreadAsync(selectedMessageThread, false, false, DbConnectionString);
+    }
+
+    private async void SendNewMessageWithThreadAsync()
+    {
+        bool addNew = false;
+        MessageThread messageThread = 
+            messageThreads.Find(thread => thread.SecondaryPhoneNumber == newMessageToPhoneNumber);
+
+        if (messageThread == null) {
+            messageThread = new MessageThread()
+            {
+                ID = Guid.NewGuid(),
+                PrimaryPhoneNumber = PrimaryPhoneNumber,
+                SecondaryPhoneNumber = newMessageToPhoneNumber
+            };
+            messageThreads.Add(messageThread);
+            addNew = true;
+        }
+        selectedMessageThread = messageThread;
+
+        await messageService.SaveMessageThreadAsync(messageThread, false, addNew, DbConnectionString);
+        await InvokeAsync(SendNewMessageAsync);
     }
 
     private async void SendNewMessageAsync()
     {
         Message newMessage = new Message()
         {
-            From = selectedMessageThread.PrimaryPhoneNumber,
-            To = selectedMessageThread.SecondaryPhoneNumber,
+            From = PrimaryPhoneNumber,
+            To = newMessageToPhoneNumber,
             Date = DateTime.Now,
             Body = newMessageBody
         };

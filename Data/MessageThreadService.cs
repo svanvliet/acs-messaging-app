@@ -31,12 +31,19 @@ namespace SVV.MessagingApp.Data
             return Task.FromResult<List<MessageThread>>(messageThreads);
         }
 
-        public Task SaveMessageThreadAsync(MessageThread messageThread, bool saveMessages, string dbConnectionString)
+        public Task SaveMessageThreadAsync(MessageThread messageThread, bool saveMessages, bool addNew, string dbConnectionString)
         { 
             using (var db = new MessageThreadDbContext(dbConnectionString))
             {
-                db.Entry(messageThread).State = EntityState.Modified;
-                db.MessageThreads.Update(messageThread);
+                if (addNew)
+                {
+                    db.MessageThreads.Add(messageThread);
+                }
+                else
+                {
+                    db.Entry(messageThread).State = EntityState.Modified;
+                    db.MessageThreads.Update(messageThread);
+                }
 
                 if (saveMessages)
                 {
