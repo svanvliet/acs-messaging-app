@@ -4,6 +4,8 @@ namespace SVV.MessagingApp.Data
 {
     public class Contact
     {
+        public Guid ID { get; set; }
+        
         private string _displayName;
         public string DisplayName 
         { 

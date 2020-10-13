@@ -5,6 +5,11 @@ namespace SVV.MessagingApp.Data
 {
     public class MessageThreadDbContext : DbContext
     {
+        public MessageThreadDbContext()
+        {
+            connectionString = "Data Source=messaging.db";
+        }
+
         public MessageThreadDbContext(string dbConnectionString)
         {
             connectionString = dbConnectionString;
@@ -15,6 +20,8 @@ namespace SVV.MessagingApp.Data
         public DbSet<MessageThread> MessageThreads { get; set; }
 
         public DbSet<Message> Messages { get; set; }
+
+        public DbSet<Contact> Contacts { get; set; }
 
         protected override void OnConfiguring(DbContextOptionsBuilder options)
         {

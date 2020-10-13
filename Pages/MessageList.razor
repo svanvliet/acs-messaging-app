@@ -61,7 +61,7 @@ else
                 @foreach (var messageThread in messageThreads)
                 {
                     <button type="button" class="list-group-item list-group-item-action @((messageThread == selectedMessageThread) ? "active" : "")" @onclick=@(() => SelectMessageThread(messageThread.ID))>
-                        @messageThread.SecondaryPhoneNumber
+                        @GetDisplayNameForNumber(messageThread.SecondaryPhoneNumber)
                         <span class="badge badge-pill @((messageThread.Read) ? "badge-light" : "badge-primary")">@messageThread.Messages.Count</span></button>
                 }
                 </div>
@@ -140,6 +140,8 @@ else
 
     private MessageThread selectedMessageThread;
 
+    private List<Contact> contacts;
+
     private string newMessageBody;
     private string newMessageToPhoneNumber;
 
@@ -168,6 +170,12 @@ else
             return;
         }
 
+        // TODO: Create ContactService and move this code outside of the Blazor view
+        using (var db = new MessageThreadDbContext(DbConnectionString))
+        {
+            contacts = db.Contacts.ToList<Contact>();
+        }
+
         messageThreads = await messageService.GetMessageThreadsAsync(PrimaryPhoneNumber, DbConnectionString);
 
         hubConnection = new HubConnectionBuilder().WithUrl(NavigationManager.ToAbsoluteUri("/SmsHub")).Build();
@@ -192,6 +200,18 @@ else
     {
         newMessageToPhoneNumber = null;
         newMessageBody = null;
+    }
+
+    private string GetDisplayNameForNumber(string phoneNumber)
+    {
+        if (contacts != null)
+        {
+            var contact = contacts.Find((c) => c.PrimaryNumber == phoneNumber);
+            if (contact != null) {
+                return contact.DisplayName;
+            }
+        }
+        return phoneNumber;
     }
 
     private void SelectMessageThread(Guid threadID)
@@ -246,4 +266,5 @@ else
         operationStatus = null;
         await InvokeAsync(StateHasChanged);
     }
+
 }
